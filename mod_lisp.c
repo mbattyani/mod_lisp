@@ -1,7 +1,13 @@
-#define MOD_LISP_VERSION "2.34"
+#define MOD_LISP_VERSION "2.35"
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.35
+  Moved back the LispSocket and UnsafeLispSocket variables as global variables 
+  instead of config struct variables. The struct is reset at each new request
+  so the sockets were lost instead of reused.
+  (Found and fixed by Edi Weitz)
+
   Version 2.34
   Send the SCRIPT_FILENAME variable to Lisp when it is there.
 
@@ -192,9 +198,10 @@ typedef struct excfg {
   char LispServerIP[20];
   long LispServerPort;
   char LispServerId[100];
-  long LispSocket;
-  long UnsafeLispSocket;
 } excfg;
+
+static long LispSocket = 0;
+static long UnsafeLispSocket = 0;
 
 pool *SocketPool = NULL;
 
@@ -374,13 +381,6 @@ static void setup_module_cells()
     if (lisp_pool == NULL) {
         lisp_pool = ap_make_sub_pool(NULL);
     };
-    /*
-     * Likewise for the table of routine/environment pairs we visit outside of
-     * request context.
-     */
-    if (static_calls_made == NULL) {
-        static_calls_made = ap_make_table(lisp_pool, 16);
-    };
 }
 #endif
 
@@ -424,21 +424,19 @@ int OpenLispSocket(excfg *cfg)
   int ret;
  
 #ifndef WIN32
-  if (cfg->LispSocket)
-    if (cfg->UnsafeLispSocket)
+  if (LispSocket)
+    if (UnsafeLispSocket)
       {
-	ap_pclosesocket(SocketPool, cfg->LispSocket);
-	cfg->LispSocket = 0;
-	cfg->UnsafeLispSocket = 0;
+        ap_pclosesocket(SocketPool, LispSocket);
+        LispSocket = 0;
+        UnsafeLispSocket = 0;
       }
     else
-      {
-	return cfg->LispSocket;
-      }
+       return LispSocket;
 #endif
 
-  cfg->LispSocket = 0;
-  cfg->UnsafeLispSocket = 0;
+  LispSocket = 0;
+  UnsafeLispSocket = 0;
   addr.sin_addr.s_addr = inet_addr(cfg->LispServerIP);
   addr.sin_port = htons((unsigned short) cfg->LispServerPort);
   addr.sin_family = AF_INET;
@@ -462,7 +460,7 @@ int OpenLispSocket(excfg *cfg)
   if (ret == -1) 
     return -1;
 
-  cfg->LispSocket = sock;
+  LispSocket = sock;
 
   return sock;
 }
@@ -501,13 +499,13 @@ void CloseLispSocket(excfg *cfg, int Socket) // socket for WIN32
   if (Socket != -1)
     ap_pclosesocket(SocketPool, Socket);
 #else
-  if (!cfg->LispSocket)
+  if (!LispSocket)
     return;
 
-  ap_pclosesocket(SocketPool, cfg->LispSocket);
+  ap_pclosesocket(SocketPool, LispSocket);
 
-  cfg->LispSocket = 0;
-  cfg->UnsafeLispSocket = 0;
+  LispSocket = 0;
+  UnsafeLispSocket = 0;
 #endif
 }
 
@@ -608,7 +606,7 @@ static int lisp_handler(request_rec *r)
     }
   ap_reset_timeout(r);
 
-  dcfg->UnsafeLispSocket = 1;
+  UnsafeLispSocket = 1;
 
   if (r->subprocess_env) 
     {
@@ -757,10 +755,6 @@ static int lisp_handler(request_rec *r)
 	  r->status = atoi(Value);
 	  r->status_line = ap_pstrdup(r->pool, Value);
 	}
-      else if (!strcmp(Header, "Location"))
-	{
-	  ap_table_set(r->headers_out, Header, Value);
-	}
       else if (!strcmp(Header, "Content-Length"))
 	{
 	  ap_table_set(r->headers_out, Header, Value);
@@ -821,10 +815,6 @@ static int lisp_handler(request_rec *r)
 	      ap_table_setn(r->notes, ap_pstrdup(r->pool, Value), ap_pstrdup(r->pool, pv));
 	    }
 	}
-      else if (!strcmp(Header, "Set-Cookie"))
-	{
-	  ap_table_add(r->headers_out, Header, Value);
-	}
       else 
 	ap_table_set(r->headers_out, Header, Value);
     }
@@ -865,7 +855,7 @@ static int lisp_handler(request_rec *r)
       ap_bpushfd(BuffSocket, -1, -1); /* unlink buffer to keep socket */
       BuffSocket->flags &= ~B_SOCKET;
     }
-  dcfg->UnsafeLispSocket = 0;
+  UnsafeLispSocket = 0;
   return OK;
 }
 
@@ -990,7 +980,6 @@ static void *lisp_create_dir_config(pool *p, char *dirspec)
     strcpy(cfg->LispServerId, "apache");
     cfg->LispServerPort = 3000;
     cfg->DefaultLispServer = 1;
-    cfg->LispSocket = 0;
 
     cfg->cmode = CONFIG_MODE_DIRECTORY;
     dname = (dname != NULL) ? dname : "";
@@ -1064,7 +1053,6 @@ static void *lisp_merge_dir_config(pool *p, void *parent_conf,
 	  merged_config->DefaultLispServer = 1;
 	}
 
-    merged_config->LispSocket = 0;
     return (void *) merged_config;
 }
 
@@ -1092,7 +1080,6 @@ static void *lisp_create_server_config(pool *p, server_rec *s)
     strcpy(cfg->LispServerIP, "127.0.0.1");
     strcpy(cfg->LispServerId, "apache");
     cfg->LispServerPort = 3000;
-    cfg->LispSocket = 0;
     cfg->DefaultLispServer = 1;
     sname = (sname != NULL) ? sname : "";
     cfg->loc = ap_pstrcat(p, "SVR(", sname, ")", NULL);
@@ -1153,7 +1140,6 @@ static void *lisp_merge_server_config(pool *p, void *server1_conf,
 	  merged_config->DefaultLispServer = 1;
 	}
 
-    merged_config->LispSocket = 0;
     return (void *) merged_config;
 }
 
@@ -1314,7 +1300,6 @@ static const char *SetLispServer(cmd_parms *cmd, void *mconfig, char *serverIp, 
   cfg->LispServerId[99] = 0;
   cfg->LispServerPort = atoi(port);
   cfg->DefaultLispServer = 0;
-  cfg->LispSocket = 0;
 
   return NULL;
 }
