@@ -1,7 +1,11 @@
-#define MOD_LISP_VERSION "2.41"
+#define MOD_LISP_VERSION "2.42"
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.42
+  Added "Lisp-Content-Length" header
+  (send after "Content-Length" header to overwrite its value)
+
   Version 2.41
   Case insensitive version of the set-cookie
 
@@ -801,6 +805,10 @@ static int lisp_handler(request_rec *r)
       else if (!strcasecmp(Header, "Content-Length"))
 	{
 	  ap_table_set(r->headers_out, Header, Value);
+	  ContentLength = atoi(Value);
+	}
+      else if (!strcasecmp(Header, "Lisp-Content-Length"))
+	{
 	  ContentLength = atoi(Value);
 	}
      else if (!strcasecmp(Header, "Last-Modified"))

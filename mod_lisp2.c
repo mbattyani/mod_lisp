@@ -1,6 +1,6 @@
 /* -*-C-*-
 
-/* ====================================================================
+  ====================================================================
   mod_lisp2 is a rewrite of mod_lisp for Apache2.
   It is based on mod_lisp and the example module from the apache distribution.
 
@@ -58,6 +58,11 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+   Read data from Lisp even if it's a HEAD request
+   Added "Lisp-Content-Length" header (send after "Content-Length" header to overwrite its value)
+   -- Dr. Edmund Weitz <edi@agharta.de>
+      2004-12-27
+
    Fixed lisp_handler to allow for no Content-Length header
    -- Tim Howe <tim.howe@celebrityresorts.com>
       2004-11-15
@@ -75,7 +80,7 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "1.0"
+#define VERSION_STRING "1.1"
 #define READ_TIMEOUT 60000000
 
 #include "httpd.h"
@@ -601,6 +606,10 @@ lisp_handler (request_rec * r)
 	  apr_table_set ((r->headers_out), header_name, header_value);
 	  content_length = (atoi (header_value));
 	}
+      else if ((strcasecmp (header_name, "lisp-content-length")) == 0)
+	{
+	  content_length = (atoi (header_value));
+	}
       else if ((strcasecmp (header_name, "last-modified")) == 0)
 	{
 	  time_t mtime = (apr_date_parse_http (header_value));
@@ -655,39 +664,40 @@ lisp_handler (request_rec * r)
 	apr_table_set ((r->headers_out), header_name, header_value);
     }
 
-  /* Copy the reply entity from Lisp to the client.  */
-  if (!r->header_only)
-    {
-      unsigned int n_read = 0;
-      input_buffer_t * buffer;
+  /* Copy the reply entity from Lisp to the client...  */
+  if (content_length > 0)
+  {
+    unsigned int n_read = 0;
+    input_buffer_t * buffer;
 
-      ML_LOG_DEBUG (r, "read entity");
-      CVT_ERROR ((get_input_buffer (socket, (&buffer))), "reading from Lisp");
-      while ((buffer->start) <= (buffer->end))
-	{
-	  unsigned int n_bytes = ((buffer->end) - (buffer->start));
-	  n_read += n_bytes;
-	  if ((content_length >= 0) && (n_read > content_length))
-	    {
-	      n_bytes -= (n_read - content_length);
-	      n_read -= (n_read - content_length);
-	    }
-	  if (!write_client_data (r, (buffer->start), n_bytes))
-	    {
-	      close_lisp_socket (cfg);
-	      return (HTTP_INTERNAL_SERVER_ERROR);
-	    }
-	  (buffer->start) += n_bytes;
-	  if (n_read == content_length)
-	    break;
+    ML_LOG_DEBUG (r, "read entity");
+    CVT_ERROR ((get_input_buffer (socket, (&buffer))), "reading from Lisp");
+    while ((buffer->start) <= (buffer->end))
+      {
+        unsigned int n_bytes = ((buffer->end) - (buffer->start));
+        n_read += n_bytes;
+        if ((content_length >= 0) && (n_read > content_length))
+          {
+            n_bytes -= (n_read - content_length);
+            n_read -= (n_read - content_length);
+          }
+        /* ...unless it's a HEAD request. */
+        if (!r->header_only && !write_client_data (r, (buffer->start), n_bytes))
+          {
+            close_lisp_socket (cfg);
+            return (HTTP_INTERNAL_SERVER_ERROR);
+          }
+        (buffer->start) += n_bytes;
+        if (n_read == content_length)
+          break;
 
-          apr_status_t fill_status = fill_input_buffer (socket);
-          if ((fill_status == APR_EOF) && (content_length < 0))
-            break;
-          else
-            CVT_ERROR (fill_status, "reading from Lisp");
-	}
-    }
+        apr_status_t fill_status = fill_input_buffer (socket);
+        if ((fill_status == APR_EOF) && (content_length < 0))
+          break;
+        else
+          CVT_ERROR (fill_status, "reading from Lisp");
+      }
+  }
   if ((content_length < 0) || (!keep_socket_p))
     CVT_ERROR ((close_lisp_socket (cfg)), "closing connection to Lisp");
   else
