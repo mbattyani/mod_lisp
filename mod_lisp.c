@@ -1,7 +1,12 @@
-#define MOD_LISP_VERSION "2.35"
+#define MOD_LISP_VERSION "2.36"
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.36
+  Close Lisp socket (and buffer) if connection is aborted.
+  Some cleanup.
+  (Edi Weitz)
+
   Version 2.35
   Moved back the LispSocket and UnsafeLispSocket variables as global variables 
   instead of config struct variables. The struct is reset at each new request
@@ -425,14 +430,16 @@ int OpenLispSocket(excfg *cfg)
  
 #ifndef WIN32
   if (LispSocket)
-    if (UnsafeLispSocket)
-      {
-        ap_pclosesocket(SocketPool, LispSocket);
-        LispSocket = 0;
-        UnsafeLispSocket = 0;
-      }
-    else
-       return LispSocket;
+    {
+      if (UnsafeLispSocket)
+        {
+          ap_pclosesocket(SocketPool, LispSocket);
+          LispSocket = 0;
+          UnsafeLispSocket = 0;
+        }
+      else
+        return LispSocket;
+    }
 #endif
 
   LispSocket = 0;
@@ -822,25 +829,22 @@ static int lisp_handler(request_rec *r)
   /* Send headers and data collected (if this was not a "header only" req. */
   ap_send_http_header(r);
   if (!r->header_only)
-    if (ContentLength > 0)
-      {
-	long ReadLength = ap_send_fb_length(BuffSocket, r, ContentLength);
-	if (ReadLength < ContentLength || r->connection->aborted)
-	  {
-	    char buffer[HUGE_STRING_LEN];
-	    ContentLength -= ReadLength;
-	    do
-	      {
-		ReadLength = ForceGets(buffer, (BUFF *) BuffSocket, 
-				       HUGE_STRING_LEN > ContentLength ? ContentLength : HUGE_STRING_LEN);
-		ContentLength -= ReadLength;
-	      }
-	    while (ReadLength > 0 && ContentLength > 0);
-	  }
-      }
+    {
+      if (ContentLength > 0)
+        {
+          long ReadLength = ap_send_fb_length(BuffSocket, r, ContentLength);
+          if (ReadLength < ContentLength || r->connection->aborted)
+            {
+              ap_log_error("mod_lisp", 0, APLOG_WARNING|APLOG_NOERRNO, r->server, "Could not send complete body to client, closing socket to Lisp");
+              ap_bclose(BuffSocket);
+              KeepSocket = 0;
+              LispSocket = 0;
+            }
+        }
       else
-	if (ContentLength == -1)
-	  ap_send_fb(BuffSocket, r);
+        if (ContentLength == -1)
+          ap_send_fb(BuffSocket, r);
+    }
 
 #ifdef WIN32
   KeepSocket = 0;
@@ -856,6 +860,7 @@ static int lisp_handler(request_rec *r)
       BuffSocket->flags &= ~B_SOCKET;
     }
   UnsafeLispSocket = 0;
+
   return OK;
 }
 
@@ -902,10 +907,6 @@ static int lisp_handler(request_rec *r)
 static void lisp_init(server_rec *s, pool *p)
 {
     ap_add_version_component("mod_lisp/" MOD_LISP_VERSION);
-    /*
-     * Set up any module cells that ought to be initialised.
-     */
-    //    setup_module_cells();
 }
 
 /* 
@@ -923,11 +924,6 @@ static void lisp_init(server_rec *s, pool *p)
 static void lisp_child_init(server_rec *s, pool *p)
 {
     SocketPool = ap_make_sub_pool(NULL);
-
-    /*
-     * Set up any module cells that ought to be initialised.
-     */
-    //    setup_module_cells();
 }
 
 /* 
@@ -1143,153 +1139,6 @@ static void *lisp_merge_server_config(pool *p, void *server1_conf,
     return (void *) merged_config;
 }
 
-/*
- * This routine is called after the request has been read but before any other
- * phases have been processed.  This allows us to make decisions based upon
- * the input header fields.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, no
- * further modules are called for this phase.
- */
-static int lisp_post_read_request(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine gives our module an opportunity to translate the URI into an
- * actual filename.  If we don't do anything special, the server's default
- * rules (Alias directives and the like) will continue to be followed.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, no
- * further modules are called for this phase.
- */
-static int lisp_translate_handler(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to check the authentication information sent with
- * the request (such as looking up the user in a database and verifying that
- * the [encrypted] password sent matches the one in the database).
- *
- * The return value is OK, DECLINED, or some HTTP_mumble error (typically
- * HTTP_UNAUTHORIZED).  If we return OK, no other modules are given a chance
- * at the request during this phase.
- */
-static int lisp_check_user_id(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to check to see if the resource being requested
- * requires authorisation.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, no
- * other modules are called during this phase.
- *
- * If *all* modules return DECLINED, the request is aborted with a server
- * error.
- */
-static int lisp_auth_checker(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to check for any module-specific restrictions placed
- * upon the requested resource.  (See the mod_access module for an lisp.)
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  All modules with an
- * handler for this phase are called regardless of whether their predecessors
- * return OK or DECLINED.  The first one to return any other status, however,
- * will abort the sequence (and the request) as usual.
- */
-static int lisp_access_checker(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to determine and/or set the various document type
- * information bits, like Content-type (via r->content_type), language, et
- * cetera.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, no
- * further modules are given a chance at the request for this phase.
- */
-static int lisp_type_checker(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to perform any module-specific fixing of header
- * fields, et cetera.  It is invoked just before any content-handler.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, the
- * server will still call any remaining modules with an handler for this
- * phase.
- */
-static int lisp_fixer_upper(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return OK;
-}
-
-/*
- * This routine is called to perform any module-specific logging activities
- * over and above the normal server things.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, any
- * remaining modules with an handler for this phase will still be called.
- */
-static int lisp_logger(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
-/*
- * This routine is called to give the module a chance to look at the request
- * headers and take any appropriate specific actions early in the processing
- * sequence.
- *
- * The return value is OK, DECLINED, or HTTP_mumble.  If we return OK, any
- * remaining modules with handlers for this phase will still be called.
- */
-static int lisp_header_parser(request_rec *r)
-{
-    excfg *cfg;
-
-    cfg = our_dconfig(r);
-    return DECLINED;
-}
-
 static const char *SetLispServer(cmd_parms *cmd, void *mconfig, char *serverIp, char *port, char *serverId)
 {
   excfg *cfg = (excfg *) mconfig;
@@ -1379,16 +1228,14 @@ module lisp_module =
     lisp_merge_server_config,        /* server config merger */
     lisp_cmds,               /* command table */
     lisp_handlers,           /* [7] list of handlers */
-    lisp_translate_handler,  /* [2] filename-to-URI translation */
-    lisp_check_user_id,      /* [5] check/validate user_id */
-    lisp_auth_checker,       /* [6] check user_id is valid *here* */
-    lisp_access_checker,     /* [4] check access by host address */
-    lisp_type_checker,       /* [7] MIME type checker/setter */
-    lisp_fixer_upper,        /* [8] fixups */
-    lisp_logger,             /* [10] logger */
-#if MODULE_MAGIC_NUMBER >= 19970103
-    lisp_header_parser,      /* [3] header parser */
-#endif
+    NULL,                    /* [2] filename-to-URI translation */
+    NULL,                    /* [5] check/validate user_id */
+    NULL,                    /* [6] check user_id is valid *here* */
+    NULL,                    /* [4] check access by host address */
+    NULL,                    /* [7] MIME type checker/setter */
+    NULL,                    /* [8] fixups */
+    NULL,                    /* [10] logger */
+    NULL,                    /* [3] header parser */
 #if MODULE_MAGIC_NUMBER >= 19970719
     lisp_child_init,         /* process initializer */
 #endif
@@ -1396,6 +1243,6 @@ module lisp_module =
     lisp_child_exit,         /* process exit/cleanup */
 #endif
 #if MODULE_MAGIC_NUMBER >= 19970902
-    lisp_post_read_request   /* [1] post read_request handling */
+    NULL                     /* [1] post read_request handling */
 #endif
 };
