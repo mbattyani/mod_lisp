@@ -70,7 +70,7 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "0.9"
+#define VERSION_STRING "1.0"
 #define READ_TIMEOUT 60000000
 
 #include "httpd.h"
