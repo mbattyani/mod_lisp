@@ -186,7 +186,6 @@ default_lisp_cfg (apr_pool_t * pool)
   return (cfg);
 }
 
-static
 static lisp_cfg_t *
 copy_lisp_cfg (apr_pool_t * pool, lisp_cfg_t * cfg)
 {
@@ -204,11 +203,11 @@ void check_cfg_for_reuse(lisp_cfg_t *local_cfg, lisp_cfg_t *cfg)
       (SERVER_PORT (local_cfg)) != (SERVER_PORT (cfg)) ||
       strcmp((SERVER_ID (local_cfg)), (SERVER_ID (cfg))))
     {
-      (SERVER_ADDRESS (copy)) = (SERVER_ADDRESS (cfg));
-      (SERVER_PORT (copy)) = (SERVER_PORT (cfg));
-      (SERVER_ID (copy)) = (SERVER_ID (cfg));
-      (SERVER_SPECIFIED_P (copy)) = (SERVER_SPECIFIED_P (cfg));
-      (SERVER_SOCKET_SAFE_P (cfg)) = 0;
+      (SERVER_ADDRESS (local_cfg)) = (SERVER_ADDRESS (cfg));
+      (SERVER_PORT (local_cfg)) = (SERVER_PORT (cfg));
+      (SERVER_ID (local_cfg)) = (SERVER_ID (cfg));
+      (SERVER_SPECIFIED_P (local_cfg)) = (SERVER_SPECIFIED_P (cfg));
+      (SERVER_SOCKET_SAFE_P (local_cfg)) = 0;
     }
 }
 
@@ -221,7 +220,7 @@ local_lisp_cfg (lisp_cfg_t *cfg)
   lisp_cfg_t *local_cfg = NULL;
 
   apr_threadkey_private_get((void**)&local_cfg, cfg_key);
-  if (!local_cfg)
+  if (local_cfg == NULL)
     {
       local_cfg = copy_lisp_cfg (socket_pool, cfg);
       apr_threadkey_private_set((void*)local_cfg, cfg_key);
