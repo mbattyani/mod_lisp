@@ -2,6 +2,10 @@
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.40
+  Allow more than one Set-Cookie
+  (it was in 2.2 but was wrongly removed in 2.35)
+
   Version 2.39
   Case insensitive parsing of the Lisp header names for compatibility with mod_lisp2.
 
@@ -849,6 +853,10 @@ static int lisp_handler(request_rec *r)
 	      *pv++ = 0;
 	      ap_table_setn(r->notes, ap_pstrdup(r->pool, Value), ap_pstrdup(r->pool, pv));
 	    }
+	}
+      else if (!strcmp(Header, "Set-Cookie"))
+	{
+	  ap_table_add(r->headers_out, Header, Value);
 	}
       else 
 	ap_table_set(r->headers_out, Header, Value);
