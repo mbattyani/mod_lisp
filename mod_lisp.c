@@ -2,6 +2,9 @@
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.39
+  Case insensitive parsing of the Lisp header names for compatibility with mod_lisp2.
+
   Version 2.38
   New "server-baseversion" and "modlisp-version" headers
   (Edi Weitz)
@@ -704,7 +707,7 @@ static int lisp_handler(request_rec *r)
 	{
 	  if (!elts[i].key) continue;
 	  ret = SendLispHeaderLine(BuffSocket, 
-				   !strcmp(elts[i].key, "end")?"end-header":elts[i].key, 
+				   !strcasecmp(elts[i].key, "end")?"end-header":elts[i].key, 
 				   elts[i].val);
 	  if (ret!=0)
 	    {
@@ -766,7 +769,7 @@ static int lisp_handler(request_rec *r)
 	Header[l-1] = 0;
 
       ap_kill_timeout(r);
-      if (!strcmp(Header, "end"))
+      if (!strcasecmp(Header, "end"))
 	break;
       
       if (ap_bgets(Value, MAX_STRING_LEN, (BUFF *) BuffSocket) <= 0)
@@ -776,69 +779,69 @@ static int lisp_handler(request_rec *r)
       if (l > 0)
 	Value[l-1] = 0;
 
-      if (!strcmp(Header, "Content-Type"))
+      if (!strcasecmp(Header, "Content-Type"))
 	{
 	  char *tmp = ap_pstrdup(r->pool, Value);
 	  ap_content_type_tolower(tmp);
 	  r->content_type = tmp;
 	}
-      else if (!strcmp(Header, "Status"))
+      else if (!strcasecmp(Header, "Status"))
 	{
 	  r->status = atoi(Value);
 	  r->status_line = ap_pstrdup(r->pool, Value);
 	}
-      else if (!strcmp(Header, "Content-Length"))
+      else if (!strcasecmp(Header, "Content-Length"))
 	{
 	  ap_table_set(r->headers_out, Header, Value);
 	  ContentLength = atoi(Value);
 	}
-     else if (!strcmp(Header, "Last-Modified"))
+     else if (!strcasecmp(Header, "Last-Modified"))
 	{
 	  time_t mtime = ap_parseHTTPdate(Value);
 	  ap_update_mtime(r, mtime);
 	  ap_set_last_modified(r);
 	}
-     else if (!strcmp(Header, "Keep-Socket"))
+     else if (!strcasecmp(Header, "Keep-Socket"))
 	{
 	  KeepSocket = atoi(Value);
 	}
-      else if (!strcmp(Header, "Log-Emerg"))
+      else if (!strcasecmp(Header, "Log-Emerg"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_EMERG|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Alert"))
+      else if (!strcasecmp(Header, "Log-Alert"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_ALERT|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Crit"))
+      else if (!strcasecmp(Header, "Log-Crit"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_CRIT|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Error"))
+      else if (!strcasecmp(Header, "Log-Error"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_ERR|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Warning"))
+      else if (!strcasecmp(Header, "Log-Warning"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_WARNING|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Notice"))
+      else if (!strcasecmp(Header, "Log-Notice"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_NOTICE|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Info"))
+      else if (!strcasecmp(Header, "Log-Info"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_INFO|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log-Debug"))
+      else if (!strcasecmp(Header, "Log-Debug"))
 	{
 	  ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Log"))
+      else if (!strcasecmp(Header, "Log"))
 	{
 	  ap_log_error("mod_lisp", 0, APLOG_ERR|APLOG_NOERRNO, r->server, "%s", Value);
 	}
-      else if (!strcmp(Header, "Note"))
+      else if (!strcasecmp(Header, "Note"))
 	{
 	  char *pv = strchr(Value, ' ');
 	  if (pv != NULL)

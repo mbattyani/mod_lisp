@@ -58,6 +58,10 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+   Fixed lisp_handler to allow for no Content-Length header
+   -- Tim Howe <tim.howe@celebrityresorts.com>
+      2004-11-15
+
    Thread safe socket reuse.
    -- Marc Battyani <marc.battyani@fractalconcept.com>
       2004-11-11
@@ -676,7 +680,12 @@ lisp_handler (request_rec * r)
 	  (buffer->start) += n_bytes;
 	  if (n_read == content_length)
 	    break;
-	  CVT_ERROR ((fill_input_buffer (socket)), "reading from Lisp");
+
+          apr_status_t fill_status = fill_input_buffer (socket);
+          if ((fill_status == APR_EOF) && (content_length < 0))
+            break;
+          else
+            CVT_ERROR (fill_status, "reading from Lisp");
 	}
     }
   if ((content_length < 0) || (!keep_socket_p))
