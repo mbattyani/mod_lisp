@@ -1,4 +1,4 @@
-#define MOD_LISP_VERSION "2.38"
+#define MOD_LISP_VERSION "2.41"
 #define HEADER_STR_LEN 500
 
 /*
