@@ -227,6 +227,8 @@ local_lisp_cfg (lisp_cfg_t *cfg)
       return local_cfg;
     }
   
+  check_cfg_for_reuse(local_cfg, cfg);
+
   return local_cfg;
 }
 #else
