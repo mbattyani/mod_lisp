@@ -1,7 +1,15 @@
-#define MOD_LISP_VERSION "2.36"
+#define MOD_LISP_VERSION "2.38"
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.38
+  New "server-baseversion" and "modlisp-version" headers
+  (Edi Weitz)
+
+  Version 2.37
+  Create new socket (instead of reusing) if IP/port combo has changed
+  (Edi Weitz)
+
   Version 2.36
   Close Lisp socket (and buffer) if connection is aborted.
   Some cleanup.
@@ -189,6 +197,9 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  * are handed a record that applies to the current location by implication or
  * inheritance, and modifying it will change the rules for other locations.
  */
+#define SERVER_IP_STR_LEN 20
+#define SERVER_ID_STR_LEN 100
+
 typedef struct excfg {
   int cmode;                  /* Environment to which record applies (directory,
 			       * server, or combination).
@@ -200,13 +211,17 @@ typedef struct excfg {
   int congenital;             /* Boolean: did we inherit an "Lisp"? */
   char *loc;                  /* Location to which this record applies. */
   int  DefaultLispServer;     // true if default values;
-  char LispServerIP[20];
+  char LispServerIP[SERVER_IP_STR_LEN];
   long LispServerPort;
-  char LispServerId[100];
+  char LispServerId[SERVER_ID_STR_LEN];
 } excfg;
+
 
 static long LispSocket = 0;
 static long UnsafeLispSocket = 0;
+
+static char LispServerIP[SERVER_IP_STR_LEN];
+static long LispServerPort;
 
 pool *SocketPool = NULL;
 
@@ -431,11 +446,13 @@ int OpenLispSocket(excfg *cfg)
 #ifndef WIN32
   if (LispSocket)
     {
-      if (UnsafeLispSocket)
+      if (UnsafeLispSocket || strcmp(cfg->LispServerIP, LispServerIP) || cfg->LispServerPort != LispServerPort)
         {
           ap_pclosesocket(SocketPool, LispSocket);
           LispSocket = 0;
           UnsafeLispSocket = 0;
+          LispServerIP[0] = 0;
+          LispServerPort = 0;
         }
       else
         return LispSocket;
@@ -444,6 +461,10 @@ int OpenLispSocket(excfg *cfg)
 
   LispSocket = 0;
   UnsafeLispSocket = 0;
+  strncpy(LispServerIP, cfg->LispServerIP, SERVER_IP_STR_LEN - 1);
+  LispServerIP[SERVER_IP_STR_LEN - 1] = 0;
+  LispServerPort = cfg->LispServerPort;
+
   addr.sin_addr.s_addr = inet_addr(cfg->LispServerIP);
   addr.sin_port = htons((unsigned short) cfg->LispServerPort);
   addr.sin_family = AF_INET;
@@ -513,6 +534,8 @@ void CloseLispSocket(excfg *cfg, int Socket) // socket for WIN32
 
   LispSocket = 0;
   UnsafeLispSocket = 0;
+  LispServerIP[0] = 0;
+  LispServerPort = 0;
 #endif
 }
 
@@ -662,6 +685,8 @@ static int lisp_handler(request_rec *r)
    * without worrying about some joker sending a server-id header of
    * his own. (Robert Macomber)*/
   ret = SendLispHeaderLine(BuffSocket, "server-id", dcfg->LispServerId);
+  ret = SendLispHeaderLine(BuffSocket, "server-baseversion", SERVER_BASEVERSION);
+  ret = SendLispHeaderLine(BuffSocket, "modlisp-version", MOD_LISP_VERSION);
   if (ret!=0)
     {
       ap_kill_timeout(r);
@@ -1143,10 +1168,10 @@ static const char *SetLispServer(cmd_parms *cmd, void *mconfig, char *serverIp, 
 {
   excfg *cfg = (excfg *) mconfig;
 
-  strncpy(cfg->LispServerIP, serverIp, 19);
-  cfg->LispServerIP[19] = 0;
-  strncpy(cfg->LispServerId, serverId, 99);
-  cfg->LispServerId[99] = 0;
+  strncpy(cfg->LispServerIP, serverIp, SERVER_IP_STR_LEN - 1);
+  cfg->LispServerIP[SERVER_IP_STR_LEN - 1] = 0;
+  strncpy(cfg->LispServerId, serverId, SERVER_ID_STR_LEN - 1);
+  cfg->LispServerId[SERVER_ID_STR_LEN - 1] = 0;
   cfg->LispServerPort = atoi(port);
   cfg->DefaultLispServer = 0;
 
