@@ -1,12 +1,13 @@
 /* -*-C-*-
 
 /* ====================================================================
-  mod_lisp2 is a reimplantation of mod_lisp for Apache2.
+  mod_lisp2 is a rewrite of mod_lisp for Apache2.
   It is based on mod_lisp and the example module from the apache distribution.
 
   It is distributed under a BSD style license
- 
-Copyright 2004 Chris Hanson & Marc Battyani. All rights reserved.
+
+Copyright 2000-2004 Marc Battyani.
+Copyright 2003,2004 Massachusetts Institute of Technology
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

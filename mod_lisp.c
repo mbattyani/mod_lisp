@@ -76,7 +76,7 @@
   It is distributed under a FreeBSD style license (if you want another license contact me)
   marc.battyani@fractalconcept.com
  
-Copyright 2000 Marc Battyani. All rights reserved. 
+Copyright 2000-2004 Marc Battyani.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided 
 that the following conditions are met: 
