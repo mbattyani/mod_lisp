@@ -58,6 +58,10 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  Set r->mtime directly
+  -- Dr. Edmund Weitz <edi@agharta.de>
+     2005-06-07
+
    Read data from Lisp even if it's a HEAD request
    Added "Lisp-Content-Length" header (send after "Content-Length" header to overwrite its value)
    -- Dr. Edmund Weitz <edi@agharta.de>
@@ -80,7 +84,7 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "1.1"
+#define VERSION_STRING "1.2"
 #define READ_TIMEOUT 60000000
 
 #include "httpd.h"
@@ -613,7 +617,7 @@ lisp_handler (request_rec * r)
       else if ((strcasecmp (header_name, "last-modified")) == 0)
 	{
 	  time_t mtime = (apr_date_parse_http (header_value));
-	  ap_update_mtime (r, mtime);
+	  r->mtime = mtime;
 	  ap_set_last_modified (r);
 	}
       else if ((strcasecmp (header_name, "keep-socket")) == 0)

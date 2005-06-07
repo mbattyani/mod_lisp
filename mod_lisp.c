@@ -1,7 +1,11 @@
-#define MOD_LISP_VERSION "2.42"
+#define MOD_LISP_VERSION "2.43"
 #define HEADER_STR_LEN 500
 
 /*
+  Version 2.43
+  fixed possible memory leak when the connection to the Lisp process fails (Alain Picard)
+  Set r->mtime directly (Edi Weitz)
+  
   Version 2.42
   Added "Lisp-Content-Length" header
   (send after "Content-Length" header to overwrite its value)
@@ -501,7 +505,10 @@ int OpenLispSocket(excfg *cfg)
   
   /* Check if we connected */
   if (ret == -1) 
-    return -1;
+    {
+      ap_pclosesocket(SocketPool, sock);
+      return -1;
+    }
 
   LispSocket = sock;
 
@@ -814,7 +821,7 @@ static int lisp_handler(request_rec *r)
      else if (!strcasecmp(Header, "Last-Modified"))
 	{
 	  time_t mtime = ap_parseHTTPdate(Value);
-	  ap_update_mtime(r, mtime);
+	  r->mtime = mtime;
 	  ap_set_last_modified(r);
 	}
      else if (!strcasecmp(Header, "Keep-Socket"))
