@@ -6,7 +6,7 @@
 
   It is distributed under a BSD style license
 
-Copyright 2000-2004 Marc Battyani.
+Copyright 2000-2005 Marc Battyani.
 Copyright 2003,2004 Massachusetts Institute of Technology
 
 Redistribution and use in source and binary forms, with or without
@@ -57,6 +57,10 @@ University of Illinois, Urbana-Champaign.
 
 /* 
   Change log:
+
+  Fixed a declaration for some versions of gcc
+  -- Marc Battyani
+     2005-08-26
 
   Set r->mtime directly
   -- Dr. Edmund Weitz <edi@agharta.de>
@@ -678,6 +682,7 @@ lisp_handler (request_rec * r)
     CVT_ERROR ((get_input_buffer (socket, (&buffer))), "reading from Lisp");
     while ((buffer->start) <= (buffer->end))
       {
+	apr_status_t fill_status;
         unsigned int n_bytes = ((buffer->end) - (buffer->start));
         n_read += n_bytes;
         if ((content_length >= 0) && (n_read > content_length))
@@ -695,7 +700,7 @@ lisp_handler (request_rec * r)
         if (n_read == content_length)
           break;
 
-        apr_status_t fill_status = fill_input_buffer (socket);
+        fill_status = fill_input_buffer (socket);
         if ((fill_status == APR_EOF) && (content_length < 0))
           break;
         else
