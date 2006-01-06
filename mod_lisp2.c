@@ -58,6 +58,22 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  fix r->mtime
+  -- Zach Beane
+     2006-01-04
+
+  Handle Lisp data correctly if there's no Content-Length header
+  -- Dr. Edmund Weitz <edi@agharta.de>
+     2005-12-24
+
+  ML_LOG_DEBUG uses the APLOG_DEBUG level, defaults to on, and
+  hence the LogLevel directive now controls mod_lisp2 logging.
+  Those wishing to squeeze the last iota of performance can use:
+     apxs2 -ic -DENABLE_DEBUG=0 mod_lisp2.c
+  This eliminates debug calls to the logging API entirely.
+  -- Nash Foster <nash@solace.net>
+     2005-12-24
+
   Fixed a declaration for some versions of gcc
   -- Marc Battyani
      2005-08-26
@@ -88,8 +104,14 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "1.2"
+#define VERSION_STRING "1.3"
 #define READ_TIMEOUT 60000000
+
+/* Enable debug logging by default so it can be controller with
+   Apache's LogLevel directive. */
+#if !defined ( ENABLE_DEBUG )
+#  define ENABLE_DEBUG    1
+#endif
 
 #include "httpd.h"
 #include "http_config.h"
@@ -134,14 +156,14 @@ module AP_MODULE_DECLARE_DATA lisp_module;
     return (RELAY_HTTP_ERROR_value);					\
 } while (0)
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
 #  define ML_LOG_DEBUG(r, msg)						\
-    (ap_log_error (APLOG_MARK, APLOG_ERR, APR_SUCCESS,			\
+    (ap_log_error (APLOG_MARK, APLOG_DEBUG, APR_SUCCESS,
 		   ((r) -> server), (msg)))
 #else
 #  define ML_LOG_DEBUG(r, msg)
 #endif
-
+
 typedef struct lisp_cfg
 {
   const char * server_address;
@@ -620,7 +642,7 @@ lisp_handler (request_rec * r)
 	}
       else if ((strcasecmp (header_name, "last-modified")) == 0)
 	{
-	  time_t mtime = (apr_date_parse_http (header_value));
+	  apr_time_t mtime = (apr_date_parse_http (header_value));
 	  r->mtime = mtime;
 	  ap_set_last_modified (r);
 	}
@@ -673,7 +695,7 @@ lisp_handler (request_rec * r)
     }
 
   /* Copy the reply entity from Lisp to the client...  */
-  if (content_length > 0)
+  //  if (content_length > 0)
   {
     unsigned int n_read = 0;
     input_buffer_t * buffer;

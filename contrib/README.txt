@@ -1,4 +1,5 @@
-Some kind mod_lisp users sent me mod_lisp version for Apache 2. I will merge them into the main mod_lisp when they are tested enough. (and when I can find some time to do it ;-)
+Some kind mod_lisp users sent me mod_lisp version for Apache 2. 
+It has been merged into the main mod_lisp now.
 
 They are numbered in the order I've got them.
 mod_lisp2-1.c : A mod_lisp 2.33 modification for Apache2 from Guido Zayas
