@@ -158,7 +158,7 @@ module AP_MODULE_DECLARE_DATA lisp_module;
 
 #if ENABLE_DEBUG
 #  define ML_LOG_DEBUG(r, msg)						\
-    (ap_log_error (APLOG_MARK, APLOG_DEBUG, APR_SUCCESS,
+    (ap_log_error (APLOG_MARK, APLOG_DEBUG, APR_SUCCESS,                \
 		   ((r) -> server), (msg)))
 #else
 #  define ML_LOG_DEBUG(r, msg)
