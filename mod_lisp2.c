@@ -31,7 +31,7 @@ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 DISCLAIMED. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT,
 INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
 (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+	    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
 HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
@@ -57,6 +57,16 @@ University of Illinois, Urbana-Champaign.
 
 /* 
   Change log:
+
+  Fixes for Apache Portable Runtie (APR) v1.2.2. Should be backward
+  compatible at compile time. Must be recompiled to upgrade or 
+  downgrade your APR library, though.
+  -- Nash Foster <nash@solace.net>
+     2006-02-27
+
+  Update for Apache 2.2.0 Compatability
+  -- Nikola Vouk
+     2006-02-24
 
   fix r->mtime
   -- Zach Beane
@@ -104,7 +114,7 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "1.3"
+#define VERSION_STRING "1.3.1"
 #define READ_TIMEOUT 60000000
 
 /* Enable debug logging by default so it can be controller with
@@ -123,19 +133,28 @@ University of Illinois, Urbana-Champaign.
 #include "util_script.h"
 #include "apr_date.h"
 #include "apr_strings.h"
+#include "apr_version.h"
+#include "apr_errno.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 module AP_MODULE_DECLARE_DATA lisp_module;
+/* Work out the version of the apache portable runtime (APR) we're
+ * compiling against... with version 1.2.2 some of the interfaces
+ * changed a bit. */
+#if (APR_MAJOR_VERSION==1 && APR_MINOR_VERSION==2 && APR_PATCH_VERSION==2)
+#define HAVE_APR_1_2_2    1
+#endif
+
 
 #define RELAY_ERROR(expr) do						\
 {									\
   while (1)								\
     {									\
       apr_status_t RELAY_ERROR_status = (expr);				\
-      if (APR_STATUS_IS_SUCCESS (RELAY_ERROR_status))			\
+      if (APR_SUCCESS == RELAY_ERROR_status)				\
 	break;								\
       if (!APR_STATUS_IS_EINTR (RELAY_ERROR_status))			\
 	return (RELAY_ERROR_status);					\
@@ -144,7 +163,7 @@ module AP_MODULE_DECLARE_DATA lisp_module;
 
 #define ML_LOG_ERROR(status, r, msg)					\
   (ap_log_error (APLOG_MARK, APLOG_ERR, (status),			\
-		 ((r) -> server), (msg)))
+			     		 ((r) -> server), (msg)))
 
 #define ML_LOG_PERROR(r, msg)						\
   ML_LOG_ERROR ((APR_FROM_OS_ERROR (apr_get_os_error ())), (r), (msg))
@@ -159,7 +178,7 @@ module AP_MODULE_DECLARE_DATA lisp_module;
 #if ENABLE_DEBUG
 #  define ML_LOG_DEBUG(r, msg)						\
     (ap_log_error (APLOG_MARK, APLOG_DEBUG, APR_SUCCESS,                \
-		   ((r) -> server), (msg)))
+			       		   ((r) -> server), (msg)))
 #else
 #  define ML_LOG_DEBUG(r, msg)
 #endif
@@ -302,18 +321,18 @@ lisp_merge_config (apr_pool_t * pool, void * base_cfg, void * add_cfg)
 {
   return
     ((SERVER_SPECIFIED_P (CFG (add_cfg)))
-     ? (copy_lisp_cfg (pool, add_cfg))
-     : (SERVER_SPECIFIED_P (CFG (base_cfg)))
-     ? (copy_lisp_cfg (pool, base_cfg))
-     : (default_lisp_cfg (pool)));
+          ? (copy_lisp_cfg (pool, add_cfg))
+	       : (SERVER_SPECIFIED_P (CFG (base_cfg)))
+	            ? (copy_lisp_cfg (pool, base_cfg))
+		         : (default_lisp_cfg (pool)));
 }
 
 static const char *
 lisp_set_server (cmd_parms * cmd,
-		 void * cfg_void,
-		 const char * server_address,
-		 const char * server_port,
-		 const char * server_id)
+                 void * cfg_void,
+                 const char * server_address,
+                 const char * server_port,
+                 const char * server_id)
 {
   lisp_cfg_t * cfg = cfg_void;
   long port;
@@ -348,14 +367,19 @@ open_lisp_socket (lisp_cfg_t * cfg)
 
   RELAY_ERROR
     (apr_sockaddr_info_get ((&addr), (cfg->server_address), APR_UNSPEC,
-			    (cfg->server_port), 0, socket_pool));
+                            (cfg->server_port), 0, socket_pool));
 
-  RELAY_ERROR
-    (apr_socket_create ((&socket), AF_INET, SOCK_STREAM, socket_pool));
-
-  /* Should be apr_socket_connect */
+#if (HAVE_APR_1_2_2)
+  RELAY_ERROR (apr_socket_create ((&socket), AF_INET, SOCK_STREAM, APR_PROTO_TCP, socket_pool));
+#else
+  RELAY_ERROR (apr_socket_create ((&socket), AF_INET, SOCK_STREAM, socket_pool));
+#endif
+  
+#if (HAVE_APR_1_2_2)
+  RELAY_ERROR (apr_socket_connect (socket, addr));
+#else
   RELAY_ERROR (apr_connect (socket, addr));
-
+#endif
   {
     input_buffer_t * buffer
       = (apr_palloc (socket_pool, (sizeof (input_buffer_t))));
@@ -381,15 +405,19 @@ close_lisp_socket (lisp_cfg_t * cfg)
 
 static apr_status_t
 write_lisp_data (apr_socket_t * socket,
-		 const char * data, unsigned int n_bytes)
+                 const char * data, unsigned int n_bytes)
 {
   const char * p = data;
   apr_size_t n1 = n_bytes;
   while (1)
     {
       apr_size_t n2 = n1;
-      /* Should be apr_socket_send */
-      RELAY_ERROR (apr_send (socket, p, (&n2)));
+#if (HAVE_APR_1_2_2)
+      RELAY_ERROR (apr_socket_send (socket, p, (&n2)));
+#else
+      RELAY_ERROR (apr_send (socket, p, &n2));
+#endif
+      RELAY_ERROR (apr_socket_send (socket, p, (&n2)));
       if (n2 == n1)
 	return (APR_SUCCESS);
       p += n2;
@@ -407,7 +435,7 @@ write_lisp_line (apr_socket_t * socket, const char * data)
 
 static apr_status_t
 write_lisp_header (apr_socket_t * socket,
-		   const char * name, const char * value)
+                   const char * name, const char * value)
 {
   RELAY_ERROR (write_lisp_line (socket, name));
   RELAY_ERROR (write_lisp_line (socket, value));
@@ -427,9 +455,15 @@ fill_input_buffer (apr_socket_t * socket)
   apr_size_t length;
 
   RELAY_ERROR (get_input_buffer (socket, (&buffer)));
+#if (HAVE_APR_1_2_2)
   RELAY_ERROR
     (((length = (sizeof (buffer->data))),
-      (apr_recv (socket, (buffer->data), (&length)))));
+      (apr_socket_recv (socket, (buffer->data), (&length)))));
+#else
+   RELAY_ERROR
+     (((length = (sizeof (buffer->data))),
+       (apr_recv (socket, (buffer->data), (&length)))));
+#endif
   (buffer->start) = (buffer->data);
   (buffer->end) = ((buffer->data) + length);
   if (length == 0)
@@ -444,13 +478,13 @@ read_lisp_line (apr_socket_t * socket, char * s, unsigned int len)
   char * scan_output = s;
   char * end_output = (scan_output + (len - 1));
   unsigned int n_pending_returns = 0;
-
+  
   RELAY_ERROR (get_input_buffer (socket, (&buffer)));
   while (1)
     {
       if ((buffer->start) == (buffer->end))
 	RELAY_ERROR (fill_input_buffer (socket));
-
+      
       if ((buffer->start) > (buffer->end))
 	{
 	  if (scan_output == s)
@@ -497,10 +531,10 @@ read_lisp_line (apr_socket_t * socket, char * s, unsigned int len)
 #define CVT_ERROR(expr, msg) do						\
 {									\
   apr_status_t CVT_ERROR_status = (expr);				\
-  if (!APR_STATUS_IS_SUCCESS (CVT_ERROR_status))			\
+  if (APR_SUCCESS != CVT_ERROR_status)			\
     {									\
       ap_log_error (APLOG_MARK, APLOG_ERR, CVT_ERROR_status,		\
-		    (r->server), "error %s", msg);			\
+						    (r->server), "error %s", msg);			\
       close_lisp_socket (cfg);						\
       return (HTTP_INTERNAL_SERVER_ERROR);				\
     }									\
@@ -537,27 +571,27 @@ lisp_handler (request_rec * r)
   if ((r->subprocess_env) != 0)
     CVT_ERROR
       ((copy_headers
-	((r->subprocess_env), map_env_var_to_lisp_header, socket)),
-       "writing to Lisp");
+	 	((r->subprocess_env), map_env_var_to_lisp_header, socket)),
+              "writing to Lisp");
 
   /* Send this before client headers so ASSOC can be used to grab it
      without worrying about some joker sending a server-id header of
      his own.  (Robert Macomber) */
   ML_LOG_DEBUG (r, "write headers");
   CVT_ERROR ((write_lisp_header (socket, "server-id", (cfg->server_id))),
-	     "writing to Lisp");
+	     	     "writing to Lisp");
 
   CVT_ERROR ((write_lisp_header (socket, "server-baseversion", AP_SERVER_BASEVERSION)),
-	     "writing to Lisp");
+	     	     "writing to Lisp");
   CVT_ERROR ((write_lisp_header (socket, "modlisp-version", VERSION_STRING)),
-	     "writing to Lisp");
+	     	     "writing to Lisp");
   CVT_ERROR ((write_lisp_header (socket, "modlisp-major-version", "2")),
-	     "writing to Lisp");
+	     	     "writing to Lisp");
   /* Send all the remaining headers.  */
   if ((r->headers_in) != 0)
     CVT_ERROR
       ((copy_headers ((r->headers_in), map_header_to_lisp_header, socket)),
-       "writing to Lisp");
+              "writing to Lisp");
 
   /* Send the end-of-headers marker.  */
   ML_LOG_DEBUG (r, "write end-of-headers");
@@ -583,10 +617,10 @@ lisp_handler (request_rec * r)
 
 	  {
 	    apr_status_t status = (write_lisp_data (socket, buffer, n_read));
-	    if (!APR_STATUS_IS_SUCCESS (status))
+	    if (APR_SUCCESS != status)
 	      {
 		while ((ap_get_client_block (r, buffer, (sizeof (buffer))))
-		       > 0)
+		       		       > 0)
 		  ;
 		ML_LOG_ERROR (status, r, "writing to Lisp");
 		close_lisp_socket (cfg);
@@ -599,7 +633,7 @@ lisp_handler (request_rec * r)
   /* Set up read timeout so we don't hang forever if Lisp is wedged.  */
   ML_LOG_DEBUG (r, "set socket timeout");
   CVT_ERROR ((apr_socket_timeout_set (socket, READ_TIMEOUT)),
-	     "setting read timeout");
+	     	     "setting read timeout");
 
   /* Read the headers and process them.  */
   ML_LOG_DEBUG (r, "read headers");
@@ -609,14 +643,14 @@ lisp_handler (request_rec * r)
       char header_value [MAX_STRING_LEN];
       CVT_ERROR
 	((read_lisp_line (socket, header_name, (sizeof (header_name)))),
-	 "reading from Lisp");
+	 	 "reading from Lisp");
 
       if ((strcasecmp (header_name, "end")) == 0)
 	break;
 
       CVT_ERROR
 	((read_lisp_line (socket, header_value, (sizeof (header_value)))),
-	 "reading from Lisp");
+	 	 "reading from Lisp");
 
       if ((strcasecmp (header_name, "content-type")) == 0)
 	{
@@ -650,31 +684,31 @@ lisp_handler (request_rec * r)
 	keep_socket_p = (atoi (header_value));
       else if ((strcasecmp (header_name, "log-emerg")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_EMERG, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-alert")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_ALERT, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-crit")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_CRIT, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-error")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_ERR, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-warning")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_WARNING, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-notice")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_NOTICE, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-info")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_INFO, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log-debug")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "log")) == 0)
 	ap_log_error (APLOG_MARK, APLOG_ERR, APR_SUCCESS, (r->server),
-		      "%s", header_value);
+				  		      "%s", header_value);
       else if ((strcasecmp (header_name, "note")) == 0)
 	{
 	  char * p = (strchr (header_value, ' '));
@@ -682,8 +716,8 @@ lisp_handler (request_rec * r)
 	    {
 	      (*p++) = '\0';
 	      apr_table_setn ((r->notes),
-			      (apr_pstrdup ((r->pool), header_value)),
-			      (apr_pstrdup ((r->pool), p)));
+			      			      (apr_pstrdup ((r->pool), header_value)),
+						      			      (apr_pstrdup ((r->pool), p)));
 	    }
 	}
       else if ((strcasecmp (header_name, "set-cookie")) == 0)
@@ -739,7 +773,7 @@ lisp_handler (request_rec * r)
 
 static apr_status_t
 copy_headers (apr_table_t * table, header_map_t * map_name,
-	      apr_socket_t * socket)
+			  	      apr_socket_t * socket)
 {
   const apr_array_header_t * h = (apr_table_elts (table));
   const apr_table_entry_t * scan = ((apr_table_entry_t *) (h->elts));
@@ -790,8 +824,8 @@ map_header_to_lisp_header (const char * name)
 {
   return
     (((name != 0) && ((strcasecmp (name, "end")) == 0))
-     ? "end-header"
-     : name);
+          ? "end-header"
+	       : name);
 }
 
 static int
@@ -815,9 +849,9 @@ write_client_data (request_rec * r, const char * data, unsigned int n_bytes)
 
 static int
 lisp_post_config (apr_pool_t * cfg_pool,
-		  apr_pool_t * log_pool,
-		  apr_pool_t * temp_pool,
-		  server_rec * s)
+			     		  apr_pool_t * log_pool,
+					  		  apr_pool_t * temp_pool,
+							  		  server_rec * s)
 {
   ap_add_version_component (cfg_pool, "mod_lisp2/" VERSION_STRING);
   return (OK);
@@ -837,7 +871,7 @@ destroy_socket_pool (void * dummy)
 static void
 lisp_child_init (apr_pool_t * pool, server_rec * s)
 {
-  if (APR_STATUS_IS_SUCCESS (apr_pool_create ((&socket_pool), 0)))
+  if (APR_SUCCESS == apr_pool_create ((&socket_pool), 0))
     {
       apr_pool_cleanup_register (pool, 0, destroy_socket_pool, destroy_socket_pool);
 #if APR_HAS_THREADS
