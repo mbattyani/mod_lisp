@@ -58,6 +58,10 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  Fixed u bug that made mod_lisp send all twice to the lisp process.
+  -- Lars Rune Nøstdal
+     2006-03-14
+
   Fixes for Apache Portable Runtie (APR) v1.2.2. Should be backward
   compatible at compile time. Must be recompiled to upgrade or 
   downgrade your APR library, though.
@@ -417,7 +421,6 @@ write_lisp_data (apr_socket_t * socket,
 #else
       RELAY_ERROR (apr_send (socket, p, &n2));
 #endif
-      RELAY_ERROR (apr_socket_send (socket, p, (&n2)));
       if (n2 == n1)
 	return (APR_SUCCESS);
       p += n2;
