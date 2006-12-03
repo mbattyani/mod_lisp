@@ -58,6 +58,10 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  Fixed the APR 1.2.2 detection.
+  -- sent by several people
+     2006-1203
+
   Fixed u bug that made mod_lisp send all twice to the lisp process.
   -- Lars Rune Nøstdal
      2006-03-14
@@ -148,7 +152,7 @@ module AP_MODULE_DECLARE_DATA lisp_module;
 /* Work out the version of the apache portable runtime (APR) we're
  * compiling against... with version 1.2.2 some of the interfaces
  * changed a bit. */
-#if (APR_MAJOR_VERSION==1 && APR_MINOR_VERSION==2 && APR_PATCH_VERSION==2)
+#if (APR_MAJOR_VERSION==1 && APR_MINOR_VERSION==2 && APR_PATCH_VERSION>=2)
 #define HAVE_APR_1_2_2    1
 #endif
 
