@@ -58,6 +58,11 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  If request contains chunked data, send chunks (length word plus data)
+  to backend lisp. Also eliminated a gcc warning.
+  -- Hugh Winkler
+     2006-12-05
+
   Fixed the APR 1.2.2 detection.
   -- sent by several people
      2006-1203
@@ -231,7 +236,7 @@ static header_map_t map_env_var_to_lisp_header;
 static header_map_t map_header_to_lisp_header;
 static int write_client_data
   (request_rec * r, const char * data, unsigned int n_bytes);
-
+
 /* Configuration data */
 
 static lisp_cfg_t *
@@ -284,19 +289,19 @@ static apr_threadkey_t *cfg_key;
 static lisp_cfg_t *
 local_lisp_cfg (lisp_cfg_t *cfg)
 {
-  lisp_cfg_t *local_cfg = NULL;
-
-  apr_threadkey_private_get((void**)&local_cfg, cfg_key);
+  void *local_cfg = NULL;
+  
+  apr_threadkey_private_get(&local_cfg, cfg_key);
   if (local_cfg == NULL)
     {
       local_cfg = copy_lisp_cfg (socket_pool, cfg);
-      apr_threadkey_private_set((void*)local_cfg, cfg_key);
+      apr_threadkey_private_set(local_cfg, cfg_key);
       return local_cfg;
     }
   
   check_cfg_for_reuse(local_cfg, cfg);
 
-  return local_cfg;
+  return (lisp_cfg_t*) local_cfg;
 }
 #else
 lisp_cfg_t *local_cfg;
@@ -433,6 +438,26 @@ write_lisp_data (apr_socket_t * socket,
 }
 
 static apr_status_t
+write_lisp_data_chunk (apr_socket_t * socket,
+                 const char * data, unsigned int n_bytes)
+{
+  char crlf[2] =  {0xd, 0xa};
+  char length[16];
+  snprintf(length, 16, "%x", n_bytes);
+  
+  apr_status_t status = write_lisp_data (socket, length, strlen(length));
+  if ( status == APR_SUCCESS)
+    {
+      status = write_lisp_data (socket, crlf, 2);
+      if ( status == APR_SUCCESS && n_bytes)
+	status = write_lisp_data (socket, data, n_bytes);
+      if ( status == APR_SUCCESS)
+	status = write_lisp_data (socket, crlf, 2);
+    }
+  return status; 
+}
+
+static apr_status_t
 write_lisp_line (apr_socket_t * socket, const char * data)
 {
   RELAY_ERROR (write_lisp_data (socket, data, (strlen (data))));
@@ -555,6 +580,7 @@ lisp_handler (request_rec * r)
   int content_length = (-1);
   int keep_socket_p = 0;
   apr_socket_t * socket;
+  const char * request_content_length = 0;
 
   cfg = local_lisp_cfg(cfg);
 
@@ -600,6 +626,8 @@ lisp_handler (request_rec * r)
       ((copy_headers ((r->headers_in), map_header_to_lisp_header, socket)),
               "writing to Lisp");
 
+  request_content_length = apr_table_get(r->headers_in, "Content-Length");
+
   /* Send the end-of-headers marker.  */
   ML_LOG_DEBUG (r, "write end-of-headers");
   CVT_ERROR ((write_lisp_line (socket, "end")), "writing to Lisp");
@@ -619,21 +647,31 @@ lisp_handler (request_rec * r)
 	      close_lisp_socket (cfg);
 	      return (HTTP_INTERNAL_SERVER_ERROR);
 	    }
-	  if (n_read == 0)
-	    break;
 
+	  /* for chunked case, when nread == 0, we will write 
+	   * a terminating 0.*/
+	  
 	  {
-	    apr_status_t status = (write_lisp_data (socket, buffer, n_read));
+	    apr_status_t status = APR_SUCCESS; 
+	    
+	    /* if there's no Content-Type header, the data must be chunked */
+	    if (request_content_length == NULL)
+	      status = write_lisp_data_chunk (socket, buffer, n_read);
+	    else if (n_read != 0)
+	      status = write_lisp_data (socket, buffer, n_read);
+	    
 	    if (APR_SUCCESS != status)
 	      {
-		while ((ap_get_client_block (r, buffer, (sizeof (buffer))))
-		       		       > 0)
+		while ((ap_get_client_block (r, buffer, sizeof(buffer)))
+		       > 0)
 		  ;
 		ML_LOG_ERROR (status, r, "writing to Lisp");
 		close_lisp_socket (cfg);
 		return (HTTP_INTERNAL_SERVER_ERROR);
 	      }
 	  }
+	  if( n_read == 0)
+	    break;
 	}
     }
 
