@@ -443,9 +443,11 @@ write_lisp_data_chunk (apr_socket_t * socket,
 {
   char crlf[2] =  {0xd, 0xa};
   char length[16];
-  snprintf(length, 16, "%x", n_bytes);
+  apr_status_t status;
+
+  apr_snprintf(length, 16, "%x", n_bytes);	// 2 Jun 08 JDP
   
-  apr_status_t status = write_lisp_data (socket, length, strlen(length));
+  status = write_lisp_data (socket, length, strlen(length));
   if ( status == APR_SUCCESS)
     {
       status = write_lisp_data (socket, crlf, 2);
