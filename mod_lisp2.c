@@ -58,6 +58,10 @@ University of Illinois, Urbana-Champaign.
 /* 
   Change log:
 
+  Fixed the APR detection.
+  -- sent by Stelian Ionescu, Andrew Egeler and Thomas de Grivel
+     2008-10-21
+
   If request contains chunked data, send chunks (length word plus data)
   to backend lisp. Also eliminated a gcc warning.
   -- Hugh Winkler
@@ -127,7 +131,7 @@ University of Illinois, Urbana-Champaign.
       2003-12-02
 */
 
-#define VERSION_STRING "1.3.1"
+#define VERSION_STRING "1.3.2"
 #define READ_TIMEOUT 60000000
 
 /* Enable debug logging by default so it can be controller with
@@ -157,7 +161,7 @@ module AP_MODULE_DECLARE_DATA lisp_module;
 /* Work out the version of the apache portable runtime (APR) we're
  * compiling against... with version 1.2.2 some of the interfaces
  * changed a bit. */
-#if (APR_MAJOR_VERSION==1 && APR_MINOR_VERSION==2 && APR_PATCH_VERSION>=2)
+#if (APR_MAJOR_VERSION==1 && (APR_MINOR_VERSION>2 || (APR_MINOR_VERSION==2 && APR_PATCH_VERSION>=2)))
 #define HAVE_APR_1_2_2    1
 #endif
 
