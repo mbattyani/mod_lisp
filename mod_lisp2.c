@@ -6,7 +6,7 @@
 
   It is distributed under a BSD style license
 
-Copyright 2000-2005 Marc Battyani.
+Copyright 2000-2009 Marc Battyani.
 Copyright 2003,2004 Massachusetts Institute of Technology
 
 Redistribution and use in source and binary forms, with or without
@@ -854,6 +854,7 @@ map_env_var_to_lisp_header (const char * var)
     "SERVER_PROTOCOL", "server-protocol",
     "SCRIPT_FILENAME", "script-filename",
     "SSL_SESSION_ID", "ssl-session-id",
+    "REMOTE_USER", "remote-user",
     0
     };
   const char ** p = plist;
