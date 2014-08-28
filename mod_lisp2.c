@@ -4,40 +4,13 @@
   mod_lisp2 is a rewrite of mod_lisp for Apache2.
   It is based on mod_lisp and the example module from the apache distribution.
 
-  It is distributed under a BSD style license
+  It is distributed under an Apache 2.0 style license
+  See LICENSE.txt for more details.
 
-Copyright 2000-2009 Marc Battyani.
+Copyright 2000-2014 Marc Battyani & contributors
 Copyright 2003,2004 Massachusetts Institute of Technology
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-   1. Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-   2. Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-   3. The name of the author may not be used to endorse or promote
-      products derived from this software without specific prior
-      written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-	    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
-IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
-
-  ==================================================================== 
+  ====================================================================
 */
 
 /*
@@ -55,7 +28,7 @@ University of Illinois, Urbana-Champaign.
   ====================================================================
 */
 
-/* 
+/*
   Change log:
 
   Fixed the APR detection.
@@ -76,7 +49,7 @@ University of Illinois, Urbana-Champaign.
      2006-03-14
 
   Fixes for Apache Portable Runtie (APR) v1.2.2. Should be backward
-  compatible at compile time. Must be recompiled to upgrade or 
+  compatible at compile time. Must be recompiled to upgrade or
   downgrade your APR library, though.
   -- Nash Foster <nash@solace.net>
      2006-02-27
@@ -294,7 +267,7 @@ static lisp_cfg_t *
 local_lisp_cfg (lisp_cfg_t *cfg)
 {
   void *local_cfg = NULL;
-  
+
   apr_threadkey_private_get(&local_cfg, cfg_key);
   if (local_cfg == NULL)
     {
@@ -302,7 +275,7 @@ local_lisp_cfg (lisp_cfg_t *cfg)
       apr_threadkey_private_set(local_cfg, cfg_key);
       return local_cfg;
     }
-  
+
   check_cfg_for_reuse(local_cfg, cfg);
 
   return (lisp_cfg_t*) local_cfg;
@@ -391,7 +364,7 @@ open_lisp_socket (lisp_cfg_t * cfg)
 #else
   RELAY_ERROR (apr_socket_create ((&socket), AF_INET, SOCK_STREAM, socket_pool));
 #endif
-  
+
 #if (HAVE_APR_1_2_2)
   RELAY_ERROR (apr_socket_connect (socket, addr));
 #else
@@ -450,7 +423,7 @@ write_lisp_data_chunk (apr_socket_t * socket,
   apr_status_t status;
 
   apr_snprintf(length, 16, "%x", n_bytes);	// 2 Jun 08 JDP
-  
+
   status = write_lisp_data (socket, length, strlen(length));
   if ( status == APR_SUCCESS)
     {
@@ -460,7 +433,7 @@ write_lisp_data_chunk (apr_socket_t * socket,
       if ( status == APR_SUCCESS)
 	status = write_lisp_data (socket, crlf, 2);
     }
-  return status; 
+  return status;
 }
 
 static apr_status_t
@@ -516,13 +489,13 @@ read_lisp_line (apr_socket_t * socket, char * s, unsigned int len)
   char * scan_output = s;
   char * end_output = (scan_output + (len - 1));
   unsigned int n_pending_returns = 0;
-  
+
   RELAY_ERROR (get_input_buffer (socket, (&buffer)));
   while (1)
     {
       if ((buffer->start) == (buffer->end))
 	RELAY_ERROR (fill_input_buffer (socket));
-      
+
       if ((buffer->start) > (buffer->end))
 	{
 	  if (scan_output == s)
@@ -602,7 +575,7 @@ lisp_handler (request_rec * r)
   /* Remove any timeout that might be left over from earlier.  */
   ML_LOG_DEBUG (r, "clear socket timeout");
   CVT_ERROR ((apr_socket_timeout_set (socket, (-1))), "clearing read timeout");
-  
+
   /* Convert environment variables to headers and send them.  */
   ML_LOG_DEBUG (r, "write env-var headers");
   ap_add_cgi_vars (r);
@@ -654,18 +627,18 @@ lisp_handler (request_rec * r)
 	      return (HTTP_INTERNAL_SERVER_ERROR);
 	    }
 
-	  /* for chunked case, when nread == 0, we will write 
+	  /* for chunked case, when nread == 0, we will write
 	   * a terminating 0.*/
-	  
+
 	  {
-	    apr_status_t status = APR_SUCCESS; 
-	    
+	    apr_status_t status = APR_SUCCESS;
+
 	    /* if there's no Content-Type header, the data must be chunked */
 	    if (request_content_length == NULL)
 	      status = write_lisp_data_chunk (socket, buffer, n_read);
 	    else if (n_read != 0)
 	      status = write_lisp_data (socket, buffer, n_read);
-	    
+
 	    if (APR_SUCCESS != status)
 	      {
 		while ((ap_get_client_block (r, buffer, sizeof(buffer)))

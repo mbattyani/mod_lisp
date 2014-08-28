@@ -5,7 +5,7 @@
   Version 2.43
   fixed possible memory leak when the connection to the Lisp process fails (Alain Picard)
   Set r->mtime directly (Edi Weitz)
-  
+
   Version 2.42
   Added "Lisp-Content-Length" header
   (send after "Content-Length" header to overwrite its value)
@@ -35,7 +35,7 @@
   (Edi Weitz)
 
   Version 2.35
-  Moved back the LispSocket and UnsafeLispSocket variables as global variables 
+  Moved back the LispSocket and UnsafeLispSocket variables as global variables
   instead of config struct variables. The struct is reset at each new request
   so the sockets were lost instead of reused.
   (Found and fixed by Edi Weitz)
@@ -44,8 +44,8 @@
   Send the SCRIPT_FILENAME variable to Lisp when it is there.
 
   Version 2.33
-  Added a couple of new headers like "Log-Notice" and so on. 
-  They are named like the corresponding log levels in httpd_log.h. 
+  Added a couple of new headers like "Log-Notice" and so on.
+  They are named like the corresponding log levels in httpd_log.h.
   The "default" log level (i.e. the one sent by just "Log") has not changed.
   (contributed by Edi Weitz)
 
@@ -67,53 +67,36 @@
   Version 2.2
   Allow more than one Set-Cookie
   Remaned the win32 dll to mod_lisp.dll
-  
+
   Version 2.1
   Added the possibility to add notes in the apache notes table
   Removed the socket reuse for the multi-threaded WIN32 apache
   Better handling of header only replies
-  
+
   Version 2.0 beta 1
   turned mod_lisp from a quick hack to something more clean.
-  added a lisp -> apache protocol for the reply 
+  added a lisp -> apache protocol for the reply
   added a keep-alive connection between lisp and apache (the connection is not closed each time)
-  
+
   Version 0.92
   corrected POST handling
-  
+
   Version 0.91
   added several values : method, content-length, content-type
-  
+
   Version 0.90
   first release
  */
 
 /* ====================================================================
-  mod_lisp is based on the example module from the apache distribution, 
+  mod_lisp is based on the example module from the apache distribution,
   and various other modules.
 
-  It is distributed under a FreeBSD style license (if you want another license contact me)
-  marc.battyani@fractalconcept.com
- 
-Copyright 2000-2004 Marc Battyani.
+  It is distributed under an Apache 2.0 license.
+  See LICENSE.txt for more details.
 
-Redistribution and use in source and binary forms, with or without modification, are permitted provided 
-that the following conditions are met: 
-
-Redistributions of source code must retain the above copyright notice, this list of conditions and the 
-following disclaimer. 
-
-Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the 
-following disclaimer in the documentation and/or other materials provided with the distribution. 
-
-THIS SOFTWARE IS PROVIDED BY THE MARC BATTYANI ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, 
-BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
-DISCLAIMED. IN NO EVENT SHALL MARC BATTYANI OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE 
-GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
-  ==================================================================== 
+  Copyright (c) 2000-20014 Marc Battyani & contributors
+  ====================================================================
 */
 
 
@@ -125,7 +108,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer. 
+ *    notice, this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
@@ -174,7 +157,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
  *
  */
 
-/* 
+/*
  * Apache lisp module.  Provide demonstrations of how modules do things.
  *
  */
@@ -441,8 +424,8 @@ static void setup_module_cells()
 /* at it.  If it returns any other value, it's treated as the text of an    */
 /* error message.                                                           */
 /*--------------------------------------------------------------------------*/
-/* 
- * Command handler for the NO_ARGS "Lisp" directive.  
+/*
+ * Command handler for the NO_ARGS "Lisp" directive.
  */
 static const char *cmd_lisp(cmd_parms *cmd, void *mconfig)
 {
@@ -461,7 +444,7 @@ int OpenLispSocket(excfg *cfg)
   struct sockaddr_in addr;
   int sock;
   int ret;
- 
+
 #ifndef WIN32
   if (LispSocket)
     {
@@ -487,24 +470,24 @@ int OpenLispSocket(excfg *cfg)
   addr.sin_addr.s_addr = inet_addr(cfg->LispServerIP);
   addr.sin_port = htons((unsigned short) cfg->LispServerPort);
   addr.sin_family = AF_INET;
-  
+
   /* Open the socket */
   sock = ap_psocket(SocketPool, AF_INET, SOCK_STREAM, 0);
-  if (sock == -1) 
+  if (sock == -1)
     return -1;
-  
+
   /* Tries to connect to Lisp (continues trying while error is EINTR) */
-  do 
+  do
     {
       ret = connect(sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in));
 #ifdef WIN32
-      if (ret == SOCKET_ERROR) 
+      if (ret == SOCKET_ERROR)
 	errno = WSAGetLastError()-WSABASEERR;
 #endif /* WIN32 */
     } while (ret == -1 && errno == EINTR);
-  
+
   /* Check if we connected */
-  if (ret == -1) 
+  if (ret == -1)
     {
       ap_pclosesocket(SocketPool, sock);
       return -1;
@@ -564,7 +547,7 @@ void CloseLispSocket(excfg *cfg, int Socket) // socket for WIN32
 int ForceGets(char *s, BUFF *BuffSocket, int len)
 {
   int ret, i;
-  
+
   for (i =0; i < 10; i++)
     {
       ret = ap_bgets(s, len,  BuffSocket);
@@ -599,7 +582,7 @@ int ForceGets(char *s, BUFF *BuffSocket, int len)
 /* calling send_http_header().  Otherwise, no header will be sent at all,   */
 /* and the output sent to the client will actually be HTTP-uncompliant.     */
 /*--------------------------------------------------------------------------*/
-/* 
+/*
  * Sample content handler.  All this does is display the call list that has
  * been built up so far.
  *
@@ -640,7 +623,7 @@ static int lisp_handler(request_rec *r)
   //    {static NoDebug=0; if (NoDebug == 0) DebugBreak();}
 
   Socket = OpenLispSocket(dcfg);
-  if (Socket == -1) 
+  if (Socket == -1)
       return SERVER_ERROR;
 
   BuffSocket = ap_bcreate(r->pool, B_SOCKET+B_RDWR);
@@ -650,7 +633,7 @@ static int lisp_handler(request_rec *r)
   ap_add_cgi_vars(r);
 
   ret = ap_setup_client_block(r, REQUEST_CHUNKED_DECHUNK);
-  if (ret) 
+  if (ret)
     {
       ap_kill_timeout(r);
       CloseLispSocket(dcfg, Socket);
@@ -660,14 +643,14 @@ static int lisp_handler(request_rec *r)
 
   UnsafeLispSocket = 1;
 
-  if (r->subprocess_env) 
+  if (r->subprocess_env)
     {
       array_header *env_arr = ap_table_elts(r->subprocess_env);
       table_entry *elts = (table_entry *) env_arr->elts;
       int i;
-      
+
       ret = 0;
-      for (i = 0; i < env_arr->nelts; ++i) 
+      for (i = 0; i < env_arr->nelts; ++i)
 	{
 	  if (!elts[i].key) continue;
 	  if (!strncmp(elts[i].key, "HTTP_", 5)) continue;
@@ -693,7 +676,7 @@ static int lisp_handler(request_rec *r)
 	    ret = SendLispHeaderLine(BuffSocket, "script-filename", elts[i].val);
 	  else if (!strcmp(elts[i].key, "SSL_SESSION_ID"))
 	    ret = SendLispHeaderLine(BuffSocket, "ssl-session-id", elts[i].val);
-	  if (ret != 0) 
+	  if (ret != 0)
 	    {
 	      ap_kill_timeout(r);
 	      CloseLispSocket(dcfg, Socket);
@@ -702,7 +685,7 @@ static int lisp_handler(request_rec *r)
 	  ap_reset_timeout(r);
 	}
     }
-  
+
   /* Send this before client headers so ASSOC can be used to grab it
    * without worrying about some joker sending a server-id header of
    * his own. (Robert Macomber)*/
@@ -716,17 +699,17 @@ static int lisp_handler(request_rec *r)
       return SERVER_ERROR;
     }
 
-  if (r->headers_in) 
+  if (r->headers_in)
     {
       array_header *hdr_arr = ap_table_elts(r->headers_in);
       table_entry *elts = (table_entry *) hdr_arr->elts;
       int i;
-      
-      for (i = 0; i < hdr_arr->nelts; ++i) 
+
+      for (i = 0; i < hdr_arr->nelts; ++i)
 	{
 	  if (!elts[i].key) continue;
-	  ret = SendLispHeaderLine(BuffSocket, 
-				   !strcasecmp(elts[i].key, "end")?"end-header":elts[i].key, 
+	  ret = SendLispHeaderLine(BuffSocket,
+				   !strcasecmp(elts[i].key, "end")?"end-header":elts[i].key,
 				   elts[i].val);
 	  if (ret!=0)
 	    {
@@ -737,27 +720,27 @@ static int lisp_handler(request_rec *r)
 	  ap_reset_timeout(r);
 	}
     }
-  
-  if (SendLispString(BuffSocket, "end\n") == -1 || FlushLispBuffSocket(BuffSocket) == -1) 
+
+  if (SendLispString(BuffSocket, "end\n") == -1 || FlushLispBuffSocket(BuffSocket) == -1)
     {
       ap_kill_timeout(r);
       CloseLispSocket(dcfg, Socket);
       return SERVER_ERROR;
     }
-    
+
   /* If there is a request entity, send it */
-  if (ap_should_client_block(r)) 
+  if (ap_should_client_block(r))
     {
       char buffer[HUGE_STRING_LEN];
       long buffersize=1;
-      
+
       /* If we did read something we'll post it to Lisp */
-      while ((buffersize=ap_get_client_block(r,buffer,HUGE_STRING_LEN))>0) 
+      while ((buffersize=ap_get_client_block(r,buffer,HUGE_STRING_LEN))>0)
 	{
 	  /* Reset our writing timeout */
 	  ap_reset_timeout(r);
 	  /* Check that what we writed was the same of what we read */
-	  if (ap_bwrite(BuffSocket,buffer,buffersize)<buffersize) 
+	  if (ap_bwrite(BuffSocket,buffer,buffersize)<buffersize)
 	    {
 	      /* Discard all further characters left to read */
 	      while (ap_get_client_block(r, buffer, HUGE_STRING_LEN) > 0);
@@ -768,15 +751,15 @@ static int lisp_handler(request_rec *r)
     }
 
   /* Flush buffers and kill our writing timeout */
-  if (FlushLispBuffSocket(BuffSocket) == -1) 
+  if (FlushLispBuffSocket(BuffSocket) == -1)
     {
       ap_kill_timeout(r);
       CloseLispSocket(dcfg, Socket);
       return SERVER_ERROR;
     }
-    
+
   ap_kill_timeout(r);
-  
+
   /* Receive the response from Lisp */
   ap_hard_timeout("lisp-read", r);
 
@@ -790,7 +773,7 @@ static int lisp_handler(request_rec *r)
       ap_kill_timeout(r);
       if (!strcasecmp(Header, "end"))
 	break;
-      
+
       if (ap_bgets(Value, MAX_STRING_LEN, (BUFF *) BuffSocket) <= 0)
 	break;
 
@@ -877,10 +860,10 @@ static int lisp_handler(request_rec *r)
 	{
 	  ap_table_add(r->headers_out, Header, Value);
 	}
-      else 
+      else
 	ap_table_set(r->headers_out, Header, Value);
     }
-  
+
   /* Send headers and data collected (if this was not a "header only" req. */
   ap_send_http_header(r);
   if (!r->header_only)
@@ -948,7 +931,7 @@ static int lisp_handler(request_rec *r)
 /* see the individual handler comments below for details.                   */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-/* 
+/*
  * This function is called during server initialisation.  Any information
  * that needs to be recorded must be in static cells, since there's no
  * configuration record.
@@ -964,7 +947,7 @@ static void lisp_init(server_rec *s, pool *p)
     ap_add_version_component("mod_lisp/" MOD_LISP_VERSION);
 }
 
-/* 
+/*
  * This function is called during server initialisation when an heavy-weight
  * process (such as a child) is being initialised.  As with the
  * module-initialisation function, any information that needs to be recorded
@@ -981,7 +964,7 @@ static void lisp_child_init(server_rec *s, pool *p)
     SocketPool = ap_make_sub_pool(NULL);
 }
 
-/* 
+/*
  * This function is called when an heavy-weight process (such as a child) is
  * being run down or destroyed.  As with the child-initialisation function,
  * any information that needs to be recorded must be in static cells, since
@@ -1088,7 +1071,7 @@ static void *lisp_merge_dir_config(pool *p, void *parent_conf,
 	merged_config->LispServerPort = nconf->LispServerPort;
 	merged_config->DefaultLispServer = 0;
       }
-    else 
+    else
       if (pconf->DefaultLispServer == 0)
 	{
 	  strcpy(merged_config->LispServerIP, pconf->LispServerIP);
@@ -1175,7 +1158,7 @@ static void *lisp_merge_server_config(pool *p, void *server1_conf,
 	merged_config->LispServerPort = s2conf->LispServerPort;
 	merged_config->DefaultLispServer = 0;
       }
-    else 
+    else
       if (s1conf->DefaultLispServer == 0)
 	{
 	  strcpy(merged_config->LispServerIP, s1conf->LispServerIP);
@@ -1217,7 +1200,7 @@ static const char *SetLispServer(cmd_parms *cmd, void *mconfig, char *serverIp, 
 /* collisions of directive names between modules.                           */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-/* 
+/*
  * List of directives specific to our module.
  */
 static const command_rec lisp_cmds[] =
@@ -1241,7 +1224,7 @@ static const command_rec lisp_cmds[] =
 /* Now the list of content handlers available from this module.             */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-/* 
+/*
  * List of content handlers our module supplies.  Each handler is defined by
  * two parts: a name by which it can be referenced (such as by
  * {Add,Set}Handler), and the actual routine name.  The list is terminated by
@@ -1265,7 +1248,7 @@ static const handler_rec lisp_handlers[] =
 /* provide the hooks into our module from the other parts of the server.    */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-/* 
+/*
  * Module definition for configuration.  If a particular callback is not
  * needed, replace its routine name below with the word NULL.
  *
