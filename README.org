@@ -1,0 +1,113 @@
+#+OPTIONS: toc:nil
+#+OPTIONS: ^:nil
+#+TITLE: mod_lisp - an Apache module for writing web applications in lisp
+
+* Installing mod_lisp
+The easiest way is first to try and use your favorite package manager to install it.
+#+begin_src bash
+apt-get install libapache2-mod-lisp
+#+end_src
+
+If there is no mod_lisp2 package for your OS you need to install mod_lisp yourself:
+
+#+begin_src bash
+# install the apache2 development package (apache2-dev or similar)
+apt-get install apache2-dev
+
+# download mod_lisp2.c
+curl -O https://github.com/mbattyani/mod_lisp/raw/master/mod_lisp2.c
+
+# compile and install the mod_lisp2 module
+apxs -i -c mod_lisp2.c
+
+#+end_src
+
+* Configuring Apache with mod_lisp
+This is a simple example of the directives to add to the apache2 configuration file (apache2.conf or
+similar)
+
+First, add the mod_lisp module. The installation process might have already done that
+ (change the path accordingly):
+#+begin_src bash
+LoadModule lisp_module libexec/apache/mod_lisp2.so # for unixes
+LoadModule lisp_module modules/mod_lisp2.dll # for Windows
+#+end_src
+
+Then add a LispServer directive (LispServer ip-address-of-lisp-computer ip-port-of-lisp-process user-defined-name):
+- ip-address-of-lisp-computer is the ip address of the computer where the Lisp process is.
+- ip-port-of-lisp-process is the ip port of the computer where the Lisp process is.
+- user-defined-name is a string that will be passed from Apache to the Lisp process. It is useful when you have several virtual servers or directories, defined within an Apache server, to be processed by mod_lisp.
+
+#+begin_src bash
+LispServer 127.0.0.1 3000 "fractal"
+#+end_src
+
+Finally add a SetHanlder directive:
+#+begin_src bash
+<Location /lisp>
+SetHandler lisp-handler
+</Location>
+#+end_src
+All the url located in /lisp (like /lisp/index.html) will be sent to mod_lisp
+
+Your apache2.conf should be like that :
+#+begin_src bash
+[...]
+LoadModule lisp_module        libexec/apache/mod_lisp2.so
+[...]
+ClearModuleList
+[...]
+AddModule mod_lisp.c
+[...]
+LispServer  127.0.0.1 3000 "fractal"
+[...]
+<Location /asp>
+SetHandler lisp-handler
+</Location>
+[...]
+#+end_src
+
+if you use mod_ssl you should put the following in your SSL directives to have the ssl-session-id sent to the Lisp process
+#+begin_src bash
+SSLOptions +StdEnvVars
+#+end_src
+
+Restart Apache and it should be OK.
+
+* The mod_lisp protocol description
+** The Apache -> Lisp protocol
+
+The protocol is really simple:
+
+    1. mod_lisp opens a socket to a lisp process. The lisp process can be on another computer for load balancing purposes.
+    2. mod_lisp sends header and connection parameter values to the Lisp process. For each key/value pair: The key is sent as a newline terminated line, then the value is sent as another line. When all key/values have been sent, the string "end\n" is sent
+    3. If there are some posted data then mod_lisp sends it to the Lisp process
+
+Here is an example of how to get the values from mod_lisp in Lisp and putting them in an a-list:
+#+begin_src lisp
+(loop for key (read-line *apache-socket* nil nil)
+      while (and key (string-not-equal key "end"))
+      for value = (read-line *apache-socket* nil nil)
+      collect (cons key value))
+#+end_src
+** The Lisp -> Apache protocol
+
+The protocol has changed for mod_lisp 2.0.
+1. The Lisp process reply to mod_lisp by sending the header key/values pairs in the same way:
+2. The Lisp process sends header and status parameter values to mod_lisp. For each key/value pair: The key is sent as a newline terminated line, then the value is sent as another line.
+3. *New for mod_lisp 2.0* If the lisp process wants to keep the socket connection with mod_lisp open it have to send a "Keep-Socket" "1" key/value pair. mod_lisp will then keep the connection open *if* you have indicated a "Content-Length" value. If you do not do this, mod lisp will close the connection after each request.
+4. The lisp process indicates that he has finished sending header key/values by sending the string "end\n"
+5. The Lisp process then writes the response content to the socket. If you have indicated a "Content-Length" value, you MUST write exactly "Content-Length" bytes.
+
+You can see what you get as key / values here. The same over a secure connection is here. (the certificate is not a valid one but it works) Note that if you have mod_ssl you get the ssl-session-id, so you can have secure sessions.The Lisp source of this is here.
+
+* examples
+Some examples showing how to use mod-lisp with various lisp implementations.
+So if you have ported the example to a Lisp implementation not listed below please send me an e-mail to add it to this table.
+mod-lisp contributions and related stuff and utilities
+| Example description          | Implementation | file               |
+|------------------------------+----------------+--------------------|
+| simple HTTP request handling | LispWorks      | mod-lisp.lisp      |
+| simple HTTP request handling | CMUCL          | modlisp-cmucl.lisp |
+| simple HTTP request handling | CLISP          | modlisp-clisp.lisp |
+| simple HTTP request handling | ECL            | modlisp-ECL.lisp   |
